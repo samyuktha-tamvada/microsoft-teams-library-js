@@ -22,6 +22,11 @@ const captureImageMobileSupportVersion = '1.7.0';
 const mediaAPISupportVersion = '1.8.0';
 
 /**
+ * This is the maximum file size which is allowed to be fetched using Get Media API.
+ */
+export const maxGetMediaFileSizeInKB = 50 * 1024;
+
+/**
  * Enum for file formats supported
  */
 export enum FileFormat {
@@ -30,35 +35,52 @@ export enum FileFormat {
 }
 
 /**
- * File object that can be used to represent image or video or audio
+ * File interface that is used to represent image or video or audio
  */
-export class File {
+export interface File {
   /**
    * Content of the file. When format is Base64, this is the base64 content
    * When format is ID, this is id mapping to the URI
    * When format is base64 and app needs to use this directly in HTML tags, it should convert this to dataUrl.
    */
-  public content: string;
+  content: string;
 
   /**
    * Format of the content
    */
-  public format: FileFormat;
+  format: FileFormat;
 
   /**
    * Size of the file in KB
    */
-  public size: number;
+  readonly size: number;
 
   /**
    * MIME type. This can be used for constructing a dataUrl, if needed.
    */
-  public mimeType: string;
+  mimeType: string;
 
   /**
    * Optional: Name of the file
    */
-  public name?: string;
+  name?: string;
+}
+
+/**
+ * Media Interface
+ */
+export interface Media extends File {
+  /**
+   * A preview of the file which is a lightweight representation.
+   * In case of images this will be a thumbnail/compressed image in base64 encoding.
+   */
+  preview: string;
+
+  /**
+   * Gets the media in chunks irrespecitve of size, these chunks are assembled and sent back to the webapp as file/blob
+   * @param callback returns blob of media
+   */
+  getMedia(callback: (error: SdkError, blob: Blob) => void): void;
 }
 
 /**
@@ -96,9 +118,16 @@ export function captureImage(callback: (error: SdkError, files: File[]) => void)
 /**
  * Media object returned by the select Media API
  */
-export class Media extends File {
+export class SelectMediaResponse implements Media {
+  content: string;
+  format: FileFormat;
+  readonly size: number;
+  mimeType: string;
+  preview: string;
+  name?: string;
+  private internalSize: number;
+
   constructor(that: Media = null) {
-    super();
     if (that) {
       this.content = that.content;
       this.format = that.format;
@@ -106,19 +135,10 @@ export class Media extends File {
       this.name = that.name;
       this.preview = that.preview;
       this.size = that.size;
+      this.internalSize = that.size;
     }
   }
 
-  /**
-   * A preview of the file which is a lightweight representation.
-   * In case of images this will be a thumbnail/compressed image in base64 encoding.
-   */
-  public preview: string;
-
-  /**
-   * Gets the media in chunks irrespecitve of size, these chunks are assembled and sent back to the webapp as file/blob
-   * @param callback returns blob of media
-   */
   public getMedia(callback: (error: SdkError, blob: Blob) => void): void {
     if (!callback) {
       throw new Error('[get Media] Callback cannot be null');
@@ -129,7 +149,7 @@ export class Media extends File {
       callback(oldPlatformError, null);
       return;
     }
-    if (!validateGetMediaInputs(this.mimeType, this.format, this.content)) {
+    if (!validateGetMediaInputs(this.mimeType, this.format, this.content, this.size, this.internalSize)) {
       const invalidInput: SdkError = { errorCode: ErrorCode.INVALID_ARGUMENTS };
       callback(invalidInput, null);
       return;
@@ -371,7 +391,7 @@ export function selectMedia(mediaInputs: MediaInputs, callback: (error: SdkError
     }
     let mediaArray: Media[] = [];
     for (let attachment of localAttachments) {
-      mediaArray.push(new Media(attachment));
+      mediaArray.push(new SelectMediaResponse(attachment));
     }
     callback(err, mediaArray);
   };
@@ -380,7 +400,7 @@ export function selectMedia(mediaInputs: MediaInputs, callback: (error: SdkError
 /**
  * View images using native image viewer
  * @param uriList urilist of images to be viewed - can be content uri or server url. supports upto 10 Images in one go
- * @param result returns back error if encountered, there will be no callback in case of success
+ * @param result returns back error if encountered, returns back null in case of success
  */
 export function viewImages(uriList: ImageUri[], callback: (error?: SdkError) => void): void {
   if (!callback) {

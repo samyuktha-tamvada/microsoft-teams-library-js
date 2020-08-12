@@ -1,4 +1,11 @@
-import { AssembleAttachment, MediaChunk, MediaInputs, FileFormat, ImageUri } from '../public/media';
+import {
+  AssembleAttachment,
+  MediaChunk,
+  MediaInputs,
+  FileFormat,
+  ImageUri,
+  maxGetMediaFileSizeInKB,
+} from '../public/media';
 
 /**
  * Helper function to create a blob from media chunks based on their sequence
@@ -58,8 +65,21 @@ export function validateSelectMediaInputs(mediaInputs: MediaInputs): boolean {
 /**
  * Returns true if the get Media params are valid and false otherwise
  */
-export function validateGetMediaInputs(mimeType: string, format: FileFormat, content: string): boolean {
-  if (mimeType == null || format == null || format != FileFormat.ID || content == null) {
+export function validateGetMediaInputs(
+  mimeType: string,
+  format: FileFormat,
+  content: string,
+  size: number,
+  internalSize: number,
+): boolean {
+  if (
+    mimeType == null ||
+    format == null ||
+    format != FileFormat.ID ||
+    content == null ||
+    size !== internalSize ||
+    size > maxGetMediaFileSizeInKB
+  ) {
     return false;
   }
   return true;
